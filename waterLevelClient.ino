@@ -7,6 +7,7 @@
 #include <RH_ASK.h>
 #include <SPI.h> // Not actualy used but needed to compile
 #include <Pangodream_18650_CL.h>
+#include "FastRunningMedian.h"
 
 #define DHTPIN 22
 #define DHTTYPE DHT22
@@ -18,13 +19,15 @@
 #define trigPin 23
 #define echoPin 19
 #define ultraSonicVcc 18
-
+const int distance_measurements = 9;
 /*
     This code works only with ESP 1.5.0-rc2 version */
 
 DHT dht(DHTPIN, DHTTYPE);
 Pangodream_18650_CL BL(VOLTMETER_PIN, 1.745);
 RH_ASK driver(2000, 11, 15);
+FastRunningMedian<unsigned int, distance_measurements, 0> median;
+
 
 float hum;
 float temp;
@@ -92,28 +95,42 @@ void getTempHum() {
 
 void getDistance() {
   int retry = 0;
+  int distance_temp = 0;
   digitalWrite(ultraSonicVcc, HIGH);
   delay(1000);
-  while (true) {
-    // Clear the trigPin by setting it LOW:
-    digitalWrite(trigPin, LOW);
+  for (int i = 0; i < distance_measurements; i++) {
+    retry = 0;
+    while (true) {
+      // Clear the trigPin by setting it LOW:
+      digitalWrite(trigPin, LOW);
 
-    delayMicroseconds(5);
-    // Trigger the sensor by setting the trigPin high for 20 microseconds:
-    digitalWrite(trigPin, HIGH);
-    delayMicroseconds(20);
-    digitalWrite(trigPin, LOW);
+      delayMicroseconds(5);
+      // Trigger the sensor by setting the trigPin high for 20 microseconds:
+      digitalWrite(trigPin, HIGH);
+      delayMicroseconds(13);
+      digitalWrite(trigPin, LOW);
 
-    // Read the echoPin. pulseIn() returns the duration (length of the pulse) in microseconds:
-    duration = pulseIn(echoPin, HIGH);
+      // Read the echoPin. pulseIn() returns the duration (length of the pulse) in microseconds:
+      duration = pulseIn(echoPin, HIGH);
 
-    // Calculate the distance:
-    distance = duration * 0.034 / 2;
-    retry++;
-    if (distance != 0 || retry > 3) {
-      break;
+      // Calculate the distance:
+      distance_temp = duration * 0.034 / 2;
+      retry++;
+      Serial.print(String(i) + String(":"));
+      if (distance_temp != 0) {
+        median.addValue(distance_temp);
+        Serial.println(distance_temp);
+        break;
+      }
+
+      if (retry > 3) {
+        median.addValue(0);
+        Serial.println(0);
+        break;
+      }
     }
   }
+  distance = median.getMedian();
   digitalWrite(ultraSonicVcc, LOW);
 
   // Print the distance on the Serial Monitor (Ctrl+Shift+M):
